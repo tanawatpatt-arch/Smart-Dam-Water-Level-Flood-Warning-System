@@ -3,18 +3,41 @@ import pandas as pd
 import numpy as np
 import datetime
 
-# ตั้งค่าหน้าเว็บให้เต็มจอ (Wide Layout)
-st.set_page_config(page_title="Smart Dam Flood Warning System", page_icon="🌊", layout="wide")
+# ตั้งค่าหน้าเว็บให้เต็มจอ (Wide Layout) และใช้ธีมเข้ม
+st.set_page_config(page_title="Smart Dam Water Level & Flood Warning System", page_icon="🌊", layout="wide")
 
-# ส่วนหัวข้อหลักของโปรเจกต์
+# CSS ตกแต่งเพิ่มเติมเพื่อให้ UI มีมิติ โค้งมน และสวยงามระดับโปร
 st.markdown("""
-    <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px;">
+    <style>
+        .main-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            padding: 25px;
+            border-radius: 12px;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #334155;
+            margin-bottom: 25px;
+        }
+        .card-container {
+            background-color: #0f172a;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# ส่วนหัวข้อหลัก
+st.markdown("""
+    <div class="main-header">
         <h2>🌊 แบบจำลองระบบบริหารจัดการและเตือนภัยระดับน้ำเขื่อนอัจฉริยะ</h2>
-        <p style="margin: 0; color: #94a3b8;">Smart Dam Water Level & Flood Warning System with Automated Spillway Control & AI Forecasting</p>
+        <p style="margin: 0; color: #94a3b8;">Smart Dam Water Level & Flood Warning System with Digital Twin & 2D Reservoir Simulation</p>
     </div>
 """, unsafe_allow_html=True)
 
-# แผงควบคุมด้านข้าง (Sidebar Architecture Info)
+# แผงควบคุมด้านข้าง (Sidebar)
 st.sidebar.header("⚙️ ข้อมูลสถาปัตยกรรมระบบ")
 st.sidebar.success("MQTT Broker: 🟢 ออนไลน์ (broker.hivemq.com)")
 st.sidebar.info("Cloud Brain: Stochastic ML Model (R² = 0.9540)")
@@ -23,26 +46,40 @@ st.sidebar.markdown("---")
 if st.sidebar.button("🧹 ล้างประวัติเหตุการณ์ (Clear Log)"):
     st.sidebar.success("ล้างประวัติสำเร็จ")
 
-# ส่วนแสดงสถานะ Digital Twin จำลองสถานะเขื่อน
-st.subheader("🌐 Digital Twin: Dam Water Level & Flood Gate Control")
-col_twin1, col_twin2 = st.columns([2, 1])
+# ส่วน Digital Twin และภาพจำลองระดับน้ำ 2 มิติ (Visual Water Tank)
+st.subheader("🌐 Digital Twin: 2D Reservoir Simulation & Spillway Control")
 
-with col_twin1:
-    st.markdown("""
-        <div style="background-color: #0f172a; padding: 15px; border-radius: 8px; color: #38bdf8; border: 1px solid #334155;">
-            <b>สถานะจำลองอ่างเก็บน้ำ (Reservoir Simulation)</b><br>
-            • เซ็นเซอร์วัดระยะ: <b>12.5 ซม. จากผิวน้ำ</b><br>
-            • อัตราการไหลเข้า (Inflow): <b>145 ลบ.ม./วินาที</b><br>
-            • อัตราการระบายออก (Outflow): <b>120 ลบ.ม./วินาที</b>
+col_2d_1, col_2d_2 = st.columns([1, 2])
+
+with col_2d_1:
+    # จำลองหลอดระดับน้ำ 2 มิติด้วย HTML/CSS สวยๆ
+    water_level_pct = 78.5
+    st.markdown(f"""
+        <div style="background-color: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; text-align: center;">
+            <b style="color: #38bdf8;">ระดับน้ำจำลอง (2D Tank)</b><br><br>
+            <div style="width: 100px; height: 180px; background-color: #0f172a; border: 3px solid #38bdf8; border-radius: 8px; margin: 0 auto; position: relative; overflow: hidden;">
+                <div style="position: absolute; bottom: 0; width: 100%; height: {water_level_pct}%; background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%); transition: height 0.5s;"></div>
+                <div style="position: absolute; width: 100%; text-align: center; top: 40%; color: white; font-weight: bold; text-shadow: 1px 1px 2px black;">{water_level_pct}%</div>
+            </div>
+            <p style="margin-top: 10px; font-size: 14px; color: #94a3b8;">ความจุอ่างเก็บน้ำ</p>
         </div>
     """, unsafe_allow_html=True)
 
-with col_twin2:
-    st.metric(label="สถานะประตูระบายน้ำหลัก (Spillway)", value="เปิดระบาย (OPEN)", delta="Relay Active", delta_color="inverse")
+with col_2d_2:
+    st.markdown("""
+        <div class="card-container">
+            <h4 style="color: #38bdf8; margin-top: 0;">📊 สถานะการทำงานระบบเรียลไทม์</h4>
+            <p>• <b>เซ็นเซอร์วัดระยะ (HC-SR04):</b> 12.5 ซม. จากผิวน้ำ (สถานะปกติ)</p>
+            <p>• <b>อัตราการไหลเข้า (Inflow Rate):</b> 145.2 ลบ.ม./วินาที</p>
+            <p>• <b>อัตราการระบายออก (Outflow Rate):</b> 120.0 ลบ.ม./วินาที</p>
+            <p>• <b>สถานะประตูระบายน้ำ (Spillway):</b> <span style="background-color: #047857; color: white; padding: 3px 8px; border-radius: 4px;">เปิดระบาย (OPEN) - Relay Active</span></p>
+            <p>• <b>โหมดควบคุม:</b> ระบบอัตโนมัติอัจฉริยะ (AI Autonomous Control)</p>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# แผงแสดงตัวเลขสถิติสำคัญ 3 ช่อง
+# แผงตัวเลขสถิติสำคัญ
 col1, col2, col3 = st.columns(3)
 with col1:
     st.metric(label="ระดับน้ำปัจจุบันในอ่างเก็บน้ำ", value="78.5%", delta="+2.3% (น้ำเพิ่มขึ้น)")
@@ -53,7 +90,7 @@ with col3:
 
 st.markdown("---")
 
-# ส่วนกราฟวิเคราะห์เชิงลึก
+# กราฟวิเคราะห์ขั้นสูง
 col_chart1, col_chart2 = st.columns(2)
 
 with col_chart1:
@@ -67,14 +104,14 @@ with col_chart1:
 with col_chart2:
     st.subheader("📊 เปรียบเทียบประสิทธิภาพการระบายน้ำ (Efficiency)")
     eff_data = pd.DataFrame({
-        'ระบบ': ['ระบบเดิม ( manual )', 'ระบบเขื่อนอัจฉริยะ (AI)'],
+        'ระบบ': ['ระบบเดิม (Manual)', 'ระบบเขื่อนอัจฉริยะ (AI)'],
         'เวลาหน่วงในการระบายน้ำ (นาที)': [45.2, 12.8]
     })
     st.bar_chart(eff_data.set_index('ระบบ'))
 
 st.markdown("---")
 
-# ตารางแผนการบริหารจัดการน้ำและประวัติเหตุการณ์
+# ตารางแผนงานและ Event Log
 col_table1, col_table2 = st.columns(2)
 
 with col_table1:
