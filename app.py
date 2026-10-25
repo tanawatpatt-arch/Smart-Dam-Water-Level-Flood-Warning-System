@@ -1,611 +1,909 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
-import numpy as np
-import datetime
-
-# Page Configuration
-st.set_page_config(
-    page_title="Smart Dam Water Level & Flood Warning Digital Twin",
-    page_icon="🌊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom Styling for Streamlit Shell
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #0b0f19;
-        color: #e2e8f0;
-    }
-    .css-1d3b38 lines, [data-testid="stSidebar"] {
-        background-color: #0f172a !important;
-        border-right: 1px solid #1e293b;
-    }
-    .header-card {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #334155;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-        margin-bottom: 20px;
-    }
-    .metric-card {
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Main Title Header
-st.markdown("""
-<div class="header-card">
-    <div style="display: flex; align-items: center; justify-content: space-between;">
-        <div>
-            <h2 style="margin:0; color: #f8fafc; font-weight: 700; font-size: 1.6rem;">
-                🚦 แบบจำลองระบบควบคุมและปรับสมดุลระดับน้ำเขื่อนอัจฉริยะหลังวิกฤตฝนตกหนัก
-            </h2>
-            <p style="margin:5px 0 0 0; color: #94a3b8; font-size: 0.95rem;">
-                Intelligent Reservoir Rebalancing and Flood Warning Simulation Post-Extreme Inflow Emergency
-            </p>
-        </div>
-        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 6px 14px; border-radius: 20px; color: #10b981; font-weight: 600; font-size: 0.85rem;">
-            🟢 MULTI-STAGE RECOVERY (C3 | แผน [75%, 50%, 25%])
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Sidebar System Architecture
-st.sidebar.markdown("### ⚙️ สถาปัตยกรรมระบบ (System Architecture)")
-st.sidebar.success("MQTT Broker: 🟢 ออนไลน์\n(broker.hivemq.com)")
-st.sidebar.info("Cloud AI (Colab): 🧠 พร้อมทำงาน\nความแม่นยำ R² = 0.9629")
-st.sidebar.warning("ESP32 State: กำลังฟื้นฟูระดับน้ำ\nคาดการณ์ 3 รอบ...")
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 ข้อมูลสถาปัตยกรรม")
-st.sidebar.caption("• Node: ESP32 + HC-SR04 + Relay Actuator\n• Cloud Brain: Multi-Stage Control Loop\n• Control Loop: Feedback & Dynamic Termination")
-
-if st.sidebar.button("🧹 ล้างประวัติเหตุการณ์", use_container_width=True):
-    st.sidebar.success("ล้างข้อมูลเรียบร้อย")
-
-# Interactive 2D Digital Twin HTML Canvas Component
-digital_twin_html = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<style>
-  * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
-  body { margin: 0; padding: 0; background-color: #0b0f19; color: #e2e8f0; overflow: hidden; }
-  
-  .container {
-    width: 100%;
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INTELLIGENT HYDROPOWER DIGITAL TWIN</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts (Inter & Orbitron) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <!-- Three.js Library & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Paho MQTT Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 
-  /* Control Top Bar */
-  .top-controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .btn {
-    background: #1e293b;
-    border: 1px solid #475569;
-    color: #f8fafc;
-    padding: 6px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.2s ease;
-  }
-  .btn:hover { background: #334155; border-color: #06b6d4; }
-  .btn.active { background: #0284c7; border-color: #38bdf8; color: white; }
-  .btn-danger { background: #991b1b; border-color: #ef4444; }
-  .btn-danger:hover { background: #dc2626; }
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            bg: '#050b14',
+                            panel: 'rgba(10, 20, 38, 0.75)',
+                            border: '#1e3a5f',
+                            accent: '#00f0ff',
+                            neonGreen: '#00ff88',
+                            neonAmber: '#ffaa00',
+                            neonRed: '#ff2a6d'
+                        }
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif'],
+                        inter: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
 
-  /* Canvas Container */
-  .canvas-relative {
-    position: relative;
-    width: 100%;
-    height: 380px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #090d16;
-    border: 1px solid #1e293b;
-  }
-  canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
+    <style>
+        body {
+            background-color: #030712;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
 
-  /* HUD Overlays */
-  .hud-badge {
-    position: absolute;
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    z-index: 10;
-  }
-  
-  .cloud-ai-hud {
-    top: 14px; left: 14px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid #0284c7;
-    color: #38bdf8;
-  }
+        /* Glassmorphism Panel Styling */
+        .glass-panel {
+            background: rgba(8, 15, 30, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 240, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 240, 255, 0.05);
+        }
 
-  .lcd-hud {
-    top: 14px; right: 14px;
-    background: #4d7c0f;
-    border: 2px solid #3f6212;
-    color: #0f172a;
-    font-family: 'Courier New', Courier, monospace;
-    padding: 8px 14px;
-    border-radius: 4px;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-  }
+        .glass-panel-amber {
+            background: rgba(30, 20, 8, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 170, 0, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(255, 170, 0, 0.05);
+        }
 
-  .sensor-hud {
-    bottom: 80px; left: 180px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid #06b6d4;
-    color: #67e8f9;
-  }
+        /* Glowing Effects */
+        .glow-text-cyan {
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.7), 0 0 20px rgba(0, 240, 255, 0.4);
+        }
+        .glow-text-red {
+            text-shadow: 0 0 10px rgba(255, 42, 109, 0.8), 0 0 20px rgba(255, 42, 109, 0.5);
+        }
+        .glow-border {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+        }
 
-  .comparison-hud {
-    bottom: 70px; right: 14px;
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid #334155;
-    color: #e2e8f0;
-    width: 280px;
-  }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(5, 11, 20, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e3a5f;
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00f0ff;
+        }
 
-  .progress-bar-bg {
-    width: 100%;
-    height: 8px;
-    background: #1e293b;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    transition: width 0.3s ease;
-  }
+        /* Scanline Overlay for Industrial Monitor Look */
+        .scanline {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 0, 0, 0.3) 50%,
+                rgba(0, 0, 0, 0.3)
+            );
+            background-size: 100% 4px;
+        }
 
-  /* Bottom Step Timeline */
-  .timeline-bar {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .step-btn {
-    background: #1e293b;
-    border: 1px solid #334155;
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    color: #94a3b8;
-    text-align: center;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: all 0.2s;
-  }
-  .step-btn:hover { border-color: #38bdf8; color: #f8fafc; }
-  .step-btn.active {
-    background: rgba(6, 182, 212, 0.15);
-    border: 1px solid #06b6d4;
-    color: #38bdf8;
-    font-weight: 700;
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
-  }
-
-  .status-strip {
-    margin-top: 12px;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid #0284c7;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-size: 12px;
-    color: #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-</style>
+        /* Pulse Animation */
+        @keyframes pulse-fast {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 1s infinite;
+        }
+    </style>
 </head>
-<body>
+<body class="h-screen w-screen relative font-inter overflow-hidden">
 
-<div class="container">
-  <!-- Top Action Controls -->
-  <div class="top-controls">
-    <button class="btn active" id="btnSync">🔴 ซิงค์ตามบอร์ด ESP32 / Wokwi</button>
-    <button class="btn btn-danger" id="btnRain">🌧️ จำลองฝนตกหนัก (Simulate Rain)</button>
-    <button class="btn" id="btnGate">🚪 เปิด/ปิด ประตูระบายน้ำ (Spillway)</button>
-    <button class="btn" id="btnPause">⏸️ หยุด / เล่นต่อ</button>
-  </div>
+    <!-- 3D Canvas Viewport -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
 
-  <!-- Main Canvas Area -->
-  <div class="canvas-relative">
-    <canvas id="damCanvas"></canvas>
+    <!-- UI Overlay (HUD Layout) -->
+    <div class="relative z-10 h-full w-full flex flex-col justify-between pointer-events-none p-4">
 
-    <!-- Overlay Badges -->
-    <div class="hud-badge cloud-ai-hud">
-      ☁️ Cloud AI & MQTT Platform (Colab)<br>
-      <span style="font-size:10px; color:#94a3b8;">Model: Dam-RL-Agent (R² = 0.9629)</span><br>
-      <span style="color:#06b6d4;">Recovery Plan: C1=75% | C2=50% | C3=25%</span>
+        <!-- ================= TOP HEADER BAR ================= -->
+        <header class="w-full glass-panel rounded-xl p-3 flex flex-wrap items-center justify-between pointer-events-auto border-b-2 border-cyber-accent">
+            <!-- Title & System ID -->
+            <div class="flex items-center space-x-4">
+                <div class="p-2 bg-cyan-950/60 rounded-lg border border-cyber-accent/50 text-cyber-accent">
+                    <i class="fa-solid fa-water-waves text-2xl animate-pulse"></i>
+                </div>
+                <div>
+                    <h1 class="font-orbitron font-extrabold text-xl tracking-wider text-white flex items-center gap-2">
+                        INTELLIGENT HYDROPOWER <span class="text-cyber-accent glow-text-cyan">DIGITAL TWIN</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 font-mono tracking-widest flex items-center gap-2">
+                        <span>SYS ID: HT-9082-DAM</span> | <span>LOCATION: ADVANCED RESERVOIR SECTOR 4</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Emergency Warning Banner (Dynamic) -->
+            <div id="alarm-banner" class="hidden md:flex items-center gap-3 px-4 py-1.5 rounded-lg bg-red-950/80 border border-cyber-neonRed animate-pulse-fast">
+                <i class="fa-solid fa-triangle-exclamation text-cyber-neonRed text-lg"></i>
+                <span class="font-orbitron text-xs text-red-200 tracking-wider font-bold">ALARM: CRITICAL RESERVOIR LEVEL REACHED (80%+)</span>
+            </div>
+
+            <!-- Status & Clock -->
+            <div class="flex items-center space-x-6 text-right font-mono text-xs">
+                <!-- MQTT Status -->
+                <div class="flex flex-col items-end">
+                    <div class="flex items-center gap-2">
+                        <span id="mqtt-status-dot" class="h-2.5 w-2.5 rounded-full bg-amber-400 animate-ping"></span>
+                        <span id="mqtt-status-text" class="text-amber-400 font-semibold">CONNECTING BROKER</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500">broker.hivemq.com : 1883</span>
+                </div>
+
+                <!-- Clock -->
+                <div class="border-l border-slate-800 pl-4 flex flex-col">
+                    <span id="live-clock" class="text-base font-orbitron font-bold text-cyber-accent">00:00:00 UTC</span>
+                    <span id="live-date" class="text-[10px] text-slate-400">2026-10-26</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ================= MAIN CONTENT HUD AREA ================= -->
+        <div class="flex-1 grid grid-cols-12 gap-4 my-3 pointer-events-none min-h-0">
+
+            <!-- LEFT SIDEBAR: ESP32 Telemetry & Sensor HUD -->
+            <aside class="col-span-12 md:col-span-3 lg:col-span-3 flex flex-col gap-3 pointer-events-auto overflow-y-auto pr-1">
+                
+                <!-- Telemetry Glass Box -->
+                <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h2 class="font-orbitron text-xs font-semibold text-cyber-accent tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-microchip"></i> ESP32 HARDWARE HUDS
+                        </h2>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">ONLINE</span>
+                    </div>
+
+                    <!-- Water Level Gauge Card -->
+                    <div class="bg-slate-950/60 rounded-lg p-3 border border-slate-800 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] text-slate-400 uppercase tracking-wider block">Reservoir Level</span>
+                            <span id="val-water-pct" class="font-orbitron text-2xl font-bold text-cyber-accent">50.0%</span>
+                            <span id="val-water-dist" class="text-[10px] text-slate-500 block">Sensor Dist: 25.0 cm</span>
+                        </div>
+                        <div class="w-16 h-16 relative flex items-center justify-center">
+                            <!-- SVG Circular Progress Bar -->
+                            <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                <path class="text-slate-800" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                <path id="water-gauge-circle" class="text-cyber-accent transition-all duration-500" stroke-linecap="round" stroke-dasharray="50, 100" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                            </svg>
+                            <i class="fa-solid fa-water text-xs text-cyber-accent absolute"></i>
+                        </div>
+                    </div>
+
+                    <!-- Flow Rate Cards -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-950/60 rounded-lg p-2.5 border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">INFLOW RATE</span>
+                            <span id="val-inflow" class="font-orbitron text-lg font-bold text-emerald-400">420 m³/s</span>
+                            <div class="w-full bg-slate-800 h-1 rounded mt-1 overflow-hidden">
+                                <div id="bar-inflow" class="bg-emerald-400 h-full transition-all duration-300" style="width: 60%"></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-950/60 rounded-lg p-2.5 border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">DISCHARGE OUTFLOW</span>
+                            <span id="val-outflow" class="font-orbitron text-lg font-bold text-cyan-400">180 m³/s</span>
+                            <div class="w-full bg-slate-800 h-1 rounded mt-1 overflow-hidden">
+                                <div id="bar-outflow" class="bg-cyan-400 h-full transition-all duration-300" style="width: 30%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Turbine Hydro Metrics -->
+                    <div class="bg-slate-950/60 rounded-lg p-3 border border-slate-800 space-y-2">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Turbine Output Power:</span>
+                            <span id="val-power" class="font-orbitron font-bold text-amber-400">142.5 MW</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400"><i class="fa-solid fa-fan text-blue-400 mr-1"></i> Turbine Generator RPM:</span>
+                            <span id="val-rpm" class="font-orbitron font-bold text-white">300 RPM</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-400"><i class="fa-solid fa-toggle-on text-emerald-400 mr-1"></i> Spillway Relay (Pin 19):</span>
+                            <span id="val-relay" class="font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">OFF (Closed)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Camera Quick View Preset Buttons -->
+                <div class="glass-panel rounded-xl p-3 flex flex-col gap-2">
+                    <span class="font-orbitron text-[11px] font-semibold text-slate-300 tracking-wider">CAMERA VIEW PRESETS</span>
+                    <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
+                        <button onclick="setCameraView('overview')" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-cyber-accent hover:text-black text-slate-300 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-globe"></i> Global
+                        </button>
+                        <button onclick="setCameraView('spillway')" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-cyber-accent hover:text-black text-slate-300 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-archway"></i> Spillway
+                        </button>
+                        <button onclick="setCameraView('turbines')" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-cyber-accent hover:text-black text-slate-300 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-industry"></i> Power Station
+                        </button>
+                        <button onclick="setCameraView('sensor')" class="px-2 py-1.5 rounded bg-slate-900 hover:bg-cyber-accent hover:text-black text-slate-300 border border-slate-700 transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-tower-broadcast"></i> ESP Sensor
+                        </button>
+                    </div>
+                </div>
+
+            </aside>
+
+            <!-- CENTER SPACER (Leaves viewport clear for 3D model interaction) -->
+            <div class="hidden md:block md:col-span-6 pointer-events-none"></div>
+
+            <!-- RIGHT SIDEBAR: Charts & Alert Log -->
+            <aside class="col-span-12 md:col-span-3 lg:col-span-3 flex flex-col gap-3 pointer-events-auto overflow-y-auto pl-1">
+                
+                <!-- Analytics Chart Glass Box -->
+                <div class="glass-panel rounded-xl p-3 flex flex-col gap-2">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                        <h2 class="font-orbitron text-xs font-semibold text-cyber-accent tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line"></i> REAL-TIME METRICS
+                        </h2>
+                        <span class="text-[10px] text-slate-500">Live Trend</span>
+                    </div>
+                    <!-- Chart Canvas -->
+                    <div class="w-full h-36 relative">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Event Log & System Alerts -->
+                <div class="glass-panel rounded-xl p-3 flex flex-col gap-2 flex-1">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                        <h2 class="font-orbitron text-xs font-semibold text-cyber-accent tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-list-check"></i> EVENT & ALERT LOGS
+                        </h2>
+                        <button onclick="clearLogs()" class="text-[10px] text-slate-500 hover:text-cyber-accent">Clear</button>
+                    </div>
+
+                    <!-- Scrollable Log Container -->
+                    <div id="log-container" class="space-y-1.5 font-mono text-[11px] overflow-y-auto max-h-48 pr-1">
+                        <!-- Log Entries appended dynamically -->
+                        <div class="p-1.5 rounded bg-slate-950/80 border-l-2 border-cyan-400 text-slate-300">
+                            <span class="text-slate-500">[10:00:02]</span> MQTT Subscribed to <span class="text-cyan-400">dam/water_level</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950/80 border-l-2 border-emerald-400 text-slate-300">
+                            <span class="text-slate-500">[10:00:00]</span> Digital Twin System Initialized OK.
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- ================= BOTTOM CONTROL PANEL ================= -->
+        <footer class="w-full glass-panel rounded-xl p-3 pointer-events-auto flex flex-wrap items-center justify-between gap-4 border-t-2 border-cyber-accent">
+            
+            <!-- Operating Mode Selector -->
+            <div class="flex items-center gap-2">
+                <span class="font-orbitron text-xs font-semibold text-slate-300 hidden sm:inline"><i class="fa-solid fa-sliders text-cyber-accent"></i> CONTROL MODE:</span>
+                <div class="flex bg-slate-950/80 p-1 rounded-lg border border-slate-800 text-xs">
+                    <button id="btn-mode-auto" onclick="setMode('auto')" class="px-3 py-1 rounded-md font-semibold transition bg-cyber-accent text-black">
+                        AUTO AI
+                    </button>
+                    <button id="btn-mode-manual" onclick="setMode('manual')" class="px-3 py-1 rounded-md font-semibold transition text-slate-400 hover:text-white">
+                        MANUAL
+                    </button>
+                    <button id="btn-mode-emergency" onclick="setMode('emergency')" class="px-3 py-1 rounded-md font-semibold transition text-slate-400 hover:text-red-400">
+                        EMERGENCY FLUSH
+                    </button>
+                </div>
+            </div>
+
+            <!-- Gate Slider Controls -->
+            <div class="flex items-center gap-4 flex-1 max-w-md mx-4">
+                <span class="font-orbitron text-xs font-semibold text-slate-300 whitespace-nowrap">SPILLWAY GATE:</span>
+                <input id="gate-slider" type="range" min="0" max="100" value="0" class="w-full accent-cyan-400 cursor-pointer" oninput="updateGateSlider(this.value)">
+                <span id="gate-angle-val" class="font-orbitron text-xs font-bold text-cyber-accent w-12 text-right">0%</span>
+            </div>
+
+            <!-- Weather Simulation Controls -->
+            <div class="flex items-center gap-2">
+                <span class="font-orbitron text-xs font-semibold text-slate-300 hidden lg:inline"><i class="fa-solid fa-cloud-showers-heavy text-blue-400"></i> WEATHER:</span>
+                <button id="btn-rain-toggle" onclick="toggleRain()" class="px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 text-xs text-slate-300 font-semibold transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-cloud-rain"></i> Rain Simulation: <span id="rain-status-text" class="text-slate-500">OFF</span>
+                </button>
+            </div>
+        </footer>
+
     </div>
 
-    <div class="hud-badge lcd-hud">
-      📟 Wokwi ESP32 LCD1602 (I2C 0x27)<br>
-      <span id="lcdLine1">Dam Level: 8.5m</span><br>
-      <span id="lcdLine2">Gate Open: 70%</span>
-    </div>
+    <!-- ================= THREE.JS 3D SCENE SCRIPT ================= -->
+    <script>
+        // --- 1. Global Variables & Scene Setup ---
+        let scene, camera, renderer, controls;
+        let reservoirWaterMesh, spillwayWaterFlow, rainParticles;
+        let damGateMesh, turbineMeshes = [];
+        let waterUniforms;
 
-    <div class="hud-badge sensor-hud">
-      📡 HC-SR04 Sensor<br>
-      Water Dist: <span id="sensorVal">3.8 m</span>
-    </div>
+        // System State Variables
+        let systemState = {
+            waterLevel: 50.0,       // 0 to 100%
+            gateOpenPct: 0.0,       // 0 to 100%
+            inflowRate: 420,        // m3/s
+            outflowRate: 180,       // m3/s
+            powerOutput: 142.5,     // MW
+            turbineRpm: 300,        // RPM
+            relayActive: false,
+            mode: 'auto',           // 'auto', 'manual', 'emergency'
+            isRaining: false,
+            sensorDistanceCm: 25.0
+        };
 
-    <div class="hud-badge comparison-hud">
-      📊 เปรียบเทียบระดับน้ำในอ่าง (Real-Time)<br>
-      <div style="font-size:10px; color:#38bdf8; margin-top:4px;">
-        ระบบ AI ฟื้นฟู 3 รอบ: <span id="aiVal">3.75 m</span>
-      </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="aiBar" style="width: 40%; background: #06b6d4;"></div>
-      </div>
+        const clock = new THREE.Clock();
 
-      <div style="font-size:10px; color:#ef4444; margin-top:6px;">
-        ระบบปกติ (ระบายคงที่): <span id="normalVal">7.80 m</span>
-      </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="normalBar" style="width: 80%; background: #ef4444;"></div>
-      </div>
-    </div>
-  </div>
+        // Initialize 3D Engine
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050b14);
+            scene.fog = new THREE.FogExp2(0x050b14, 0.008);
 
-  <!-- Status Notification Strip -->
-  <div class="status-strip" id="statusStrip">
-    💡 <b>สถานะปัจจุบัน:</b> <span id="statusText">รอบที่ 3 (สปิลเวย์เปิด 70%): ระดับน้ำลดลงจาก 8.50m → 3.75m (ระบบเดิมเหลือ 7.80m)</span>
-  </div>
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(60, 45, 75);
 
-  <!-- Interactive Timeline Steps -->
-  <div class="timeline-bar">
-    <div class="step-btn" onclick="setStep(1)">1. ฝนตกหนักน้ำล้นอ่าง</div>
-    <div class="step-btn" onclick="setStep(2)">2. AI ประมวลผลระบายน้ำ</div>
-    <div class="step-btn" onclick="setStep(3)">3. ฟื้นฟูรอบ C1 (75%)</div>
-    <div class="step-btn" onclick="setStep(4)">4. ฟื้นฟูรอบ C2 (50%)</div>
-    <div class="step-btn active" onclick="setStep(5)">5. ฟื้นฟูรอบ C3 (25%)</div>
-    <div class="step-btn" onclick="setStep(6)">6. สภาวะสมดุลปกติ</div>
-  </div>
-</div>
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
 
-<script>
-  const canvas = document.getElementById('damCanvas');
-  const ctx = canvas.getContext('2d');
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.02; // Don't go below ground
+            controls.minDistance = 15;
+            controls.maxDistance = 180;
+            controls.target.set(0, 5, 0);
 
-  function resize() {
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
-  }
-  window.addEventListener('resize', resize);
-  resize();
+            // Lighting Setup
+            setupLighting();
 
-  // Animation State
-  let isRunning = true;
-  let isRaining = true;
-  let gateOpenPercent = 0.7; // 70% open
-  let waterLevelHeight = 0.65; // Percentage of reservoir height
-  let waveOffset = 0;
-  let currentStep = 5;
+            // Build 3D Dam Environment
+            buildEnvironment();
 
-  // Rain Particles
-  const rainDrops = [];
-  for(let i=0; i<80; i++) {
-    rainDrops.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      l: Math.random() * 15 + 10,
-      v: Math.random() * 8 + 6
-    });
-  }
+            // Window Resize Listener
+            window.addEventListener('resize', onWindowResize);
+        }
 
-  // Water Discharge Particles
-  const waterFlowParticles = [];
+        // --- 2. Lighting System ---
+        function setupLighting() {
+            // Ambient Light
+            const ambient = new THREE.AmbientLight(0x1e293b, 1.2);
+            scene.add(ambient);
 
-  function drawGrid() {
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth = 1;
-    const size = 30;
-    for(let x = 0; x < canvas.width; x += size) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    }
-    for(let y = 0; y < canvas.height; y += size) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-    }
-  }
+            // Main Directional Light (Sunlight/Moonlight)
+            const sun = new THREE.DirectionalLight(0x38bdf8, 1.5);
+            sun.position.set(50, 80, 40);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            sun.shadow.camera.near = 0.5;
+            sun.shadow.camera.far = 200;
+            const d = 60;
+            sun.shadow.camera.left = -d;
+            sun.shadow.camera.right = d;
+            sun.shadow.camera.top = d;
+            sun.shadow.camera.bottom = -d;
+            scene.add(sun);
 
-  function drawDamStructure() {
-    const w = canvas.width;
-    const h = canvas.height;
+            // Sci-Fi Point Lights (Cyan & Amber Accents)
+            const damPointLight = new THREE.PointLight(0x00f0ff, 2, 40);
+            damPointLight.position.set(0, 18, -2);
+            scene.add(damPointLight);
 
-    // Mountain Background Left
-    ctx.fillStyle = '#111827';
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    ctx.lineTo(0, h * 0.4);
-    ctx.lineTo(w * 0.25, h * 0.5);
-    ctx.lineTo(w * 0.25, h);
-    ctx.fill();
+            const powerStationLight = new THREE.PointLight(0xffaa00, 2, 35);
+            powerStationLight.position.set(15, 8, 20);
+            scene.add(powerStationLight);
+        }
 
-    // Dam Main Body (Concrete structure)
-    ctx.fillStyle = '#334155';
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(w * 0.45, h * 0.25); // Top reservoir edge
-    ctx.lineTo(w * 0.55, h * 0.25); // Top crest width
-    ctx.lineTo(w * 0.72, h * 0.95); // Sloped spillway face
-    ctx.lineTo(w * 0.45, h * 0.95); // Bottom base
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+        // --- 3. Build 3D World Geometry ---
+        function buildEnvironment() {
+            // A. Mountains Terrain Base
+            const terrainGeo = new THREE.PlaneGeometry(160, 160, 64, 64);
+            terrainGeo.rotateX(-Math.PI / 2);
 
-    // Spillway Gate Metallic Frame
-    ctx.fillStyle = '#64748b';
-    ctx.fillRect(w * 0.52, h * 0.25, 14, h * 0.35);
+            const pos = terrainGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const z = pos.getZ(i);
+                // Generate valley and mountain contours
+                if (z < -10) {
+                    pos.setY(i, Math.sin(x * 0.05) * 8 + Math.cos(z * 0.05) * 12 + 10);
+                } else if (z > 10) {
+                    pos.setY(i, Math.sin(x * 0.08) * 4 + (z - 10) * 0.2);
+                } else {
+                    pos.setY(i, Math.sin(x * 0.1) * 2);
+                }
+            }
+            terrainGeo.computeVertexNormals();
 
-    // Dynamic Gate Door
-    const gateY = (h * 0.25) + (1 - gateOpenPercent) * (h * 0.25);
-    ctx.fillStyle = '#ef4444';
-    ctx.fillRect(w * 0.51, gateY, 16, 20);
+            const terrainMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                roughness: 0.9,
+                metalness: 0.2,
+                flatShading: true
+            });
+            const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+            terrain.receiveShadow = true;
+            scene.add(terrain);
 
-    // Sensor HC-SR04 Visual Bracket
-    ctx.fillStyle = '#06b6d4';
-    ctx.fillRect(w * 0.32, h * 0.18, 45, 14);
-    ctx.fillStyle = '#0891b2';
-    ctx.beginPath();
-    ctx.arc(w * 0.35, h * 0.23, 5, 0, Math.PI * 2);
-    ctx.arc(w * 0.41, h * 0.23, 5, 0, Math.PI * 2);
-    ctx.fill();
+            // B. Concrete Dam Structure
+            const damGroup = new THREE.Group();
 
-    // Dotted ultrasonic beam down to water
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#22d3ee';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    const currentWaterY = h - (waterLevelHeight * (h * 0.75));
-    ctx.moveTo(w * 0.38, h * 0.23);
-    ctx.lineTo(w * 0.38, currentWaterY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+            // Main Dam Wall
+            const damWallGeo = new THREE.BoxGeometry(70, 24, 12);
+            const concreteMat = new THREE.MeshStandardMaterial({
+                color: 0x334155,
+                roughness: 0.4,
+                metalness: 0.5
+            });
+            const damWall = new THREE.Mesh(damWallGeo, concreteMat);
+            damWall.position.set(0, 12, 0);
+            damWall.castShadow = true;
+            damWall.receiveShadow = true;
+            damGroup.add(damWall);
 
-  function drawWater() {
-    const w = canvas.width;
-    const h = canvas.height;
-    const currentWaterY = h - (waterLevelHeight * (h * 0.75));
+            // Spillway Cutout Gates (Visual Gate Doors)
+            const gateGeo = new THREE.BoxGeometry(16, 12, 2);
+            const gateMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, metalness: 0.8, roughness: 0.2 });
+            damGateMesh = new THREE.Mesh(gateGeo, gateMat);
+            damGateMesh.position.set(0, 14, -5.5);
+            damGroup.add(damGateMesh);
 
-    // Reservoir Water Mass (Left Side)
-    ctx.fillStyle = 'rgba(6, 182, 212, 0.75)';
-    ctx.beginPath();
-    ctx.moveTo(0, currentWaterY);
+            scene.add(damGroup);
 
-    // Animated Waves on Water Surface
-    for(let x = 0; x <= w * 0.48; x += 10) {
-      const y = currentWaterY + Math.sin((x * 0.03) + waveOffset) * 4;
-      ctx.lineTo(x, y);
-    }
+            // C. Water Reservoir (Upper Dam)
+            const reservoirGeo = new THREE.PlaneGeometry(68, 60, 32, 32);
+            reservoirGeo.rotateX(-Math.PI / 2);
+            
+            waterUniforms = {
+                time: { value: 1.0 }
+            };
 
-    ctx.lineTo(w * 0.48, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fill();
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x0284c7,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.85
+            });
 
-    // Water Water Outflow over Spillway (If Gate is Open)
-    if (gateOpenPercent > 0.05 && currentWaterY <= h * 0.45) {
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.85)';
-      ctx.beginPath();
-      ctx.moveTo(w * 0.53, h * 0.32);
-      ctx.quadraticCurveTo(w * 0.62, h * 0.45, w * 0.73, h * 0.92);
-      ctx.lineTo(w * 0.85, h * 0.95);
-      ctx.lineTo(w * 0.85, h);
-      ctx.lineTo(w * 0.45, h);
-      ctx.closePath();
-      ctx.fill();
+            reservoirWaterMesh = new THREE.Mesh(reservoirGeo, waterMat);
+            reservoirWaterMesh.position.set(0, 12, -32); // Y calculated dynamically
+            scene.add(reservoirWaterMesh);
 
-      // Spawn Splash Particles
-      if (Math.random() < 0.6) {
-        waterFlowParticles.push({
-          x: w * 0.53 + Math.random() * 10,
-          y: h * 0.32,
-          vx: Math.random() * 4 + 2,
-          vy: Math.random() * 2 + 1,
-          size: Math.random() * 4 + 2,
-          life: 1.0
-        });
-      }
-    }
+            // D. Spillway Water Discharge Stream (Particle/Mesh Stream)
+            const streamGeo = new THREE.PlaneGeometry(16, 25, 16, 16);
+            streamGeo.rotateX(-Math.PI / 3);
+            const streamMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.0,
+                side: THREE.DoubleSide
+            });
+            spillwayWaterFlow = new THREE.Mesh(streamGeo, streamMat);
+            spillwayWaterFlow.position.set(0, 8, 8);
+            scene.add(spillwayWaterFlow);
 
-    // Render Splash Particles
-    for(let i = waterFlowParticles.length - 1; i >= 0; i--) {
-      const p = waterFlowParticles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.2; // Gravity effect down slope
-      p.life -= 0.03;
+            // E. Hydropower Station Building & Substation
+            const powerStationGeo = new THREE.BoxGeometry(18, 10, 12);
+            const powerStationMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.3 });
+            const powerStation = new THREE.Mesh(powerStationGeo, powerStationMat);
+            powerStation.position.set(22, 5, 18);
+            powerStation.castShadow = true;
+            scene.add(powerStation);
 
-      ctx.fillStyle = `rgba(224, 242, 254, ${p.life})`;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
+            // Turbines Inside Power Station (Visualized as glowing disks)
+            for (let i = 0; i < 3; i++) {
+                const turbineGeo = new THREE.CylinderGeometry(2, 2, 1, 16);
+                const turbineMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 0.5 });
+                const turbine = new THREE.Mesh(turbineGeo, turbineMat);
+                turbine.position.set(16 + i * 6, 1, 18);
+                scene.add(turbine);
+                turbineMeshes.push(turbine);
+            }
 
-      if(p.life <= 0) waterFlowParticles.splice(i, 1);
-    }
-  }
+            // F. ESP32 Ultrasonic Sensor Pole (Digital Twin Hotspot)
+            const poleGeo = new THREE.CylinderGeometry(0.3, 0.3, 14);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(-28, 15, -6);
+            scene.add(pole);
 
-  function drawRain() {
-    if (!isRaining) return;
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
-    ctx.lineWidth = 1.2;
-    for(let i = 0; i < rainDrops.length; i++) {
-      const d = rainDrops[i];
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y);
-      ctx.lineTo(d.x - 2, d.y + d.l);
-      ctx.stroke();
+            // Sensor Box
+            const sensorBoxGeo = new THREE.BoxGeometry(2, 1.5, 2);
+            const sensorBoxMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 0.8 });
+            const sensorBox = new THREE.Mesh(sensorBoxGeo, sensorBoxMat);
+            sensorBox.position.set(-28, 22, -6);
+            scene.add(sensorBox);
 
-      d.y += d.v;
-      d.x -= 0.5;
-      if (d.y > canvas.height) {
-        d.y = -20;
-        d.x = Math.random() * canvas.width;
-      }
-    }
-  }
+            // G. Rain Simulation System
+            createRainParticleSystem();
+        }
 
-  function animate() {
-    if (isRunning) {
-      waveOffset += 0.05;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawGrid();
-      drawWater();
-      drawDamStructure();
-      drawRain();
-    }
-    requestAnimationFrame(animate);
-  }
+        // Particle System for Rain Simulation
+        function createRainParticleSystem() {
+            const particleCount = 2000;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
 
-  // Interactive Buttons Functionality
-  document.getElementById('btnPause').onclick = function() {
-    isRunning = !isRunning;
-    this.classList.toggle('active');
-    this.innerText = isRunning ? '⏸️ หยุด / เล่นต่อ' : '▶️ เล่นต่อ';
-  };
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 160;
+                positions[i + 1] = Math.random() * 80;
+                positions[i + 2] = (Math.random() - 0.5) * 160;
+            }
 
-  document.getElementById('btnRain').onclick = function() {
-    isRaining = !isRaining;
-    this.classList.toggle('active');
-  };
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0x38bdf8,
+                size: 0.4,
+                transparent: true,
+                opacity: 0.0
+            });
 
-  document.getElementById('btnGate').onclick = function() {
-    gateOpenPercent = gateOpenPercent > 0.1 ? 0 : 0.8;
-    updateUI();
-  };
+            rainParticles = new THREE.Points(geometry, material);
+            scene.add(rainParticles);
+        }
 
-  function setStep(step) {
-    currentStep = step;
-    document.querySelectorAll('.step-btn').forEach((b, idx) => {
-      b.classList.toggle('active', (idx + 1) === step);
-    });
+        // --- 4. Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
 
-    switch(step) {
-      case 1:
-        waterLevelHeight = 0.92;
-        gateOpenPercent = 0.1;
-        isRaining = true;
-        updateText("ฝนตกหนักวิกฤต! ระดับน้ำสูงเกิน 90% (8.95m) เซ็นเซอร์เตือนภัยสีแดง", "8.95 m", "10%", "8.95 m", "8.95 m", 95, 95);
-        break;
-      case 2:
-        waterLevelHeight = 0.88;
-        gateOpenPercent = 0.4;
-        isRaining = true;
-        updateText("Cloud AI สั่งการเปิดประตูสปิลเวย์แบบขั้นบันได C1 เพื่อเตรียมเร่งระบาย", "8.50 m", "40%", "7.20 m", "8.80 m", 75, 90);
-        break;
-      case 3:
-        waterLevelHeight = 0.75;
-        gateOpenPercent = 0.8;
-        isRaining = false;
-        updateText("ฟื้นฟูรอบ C1: สปิลเวย์เปิด 80% ระบายน้ำมวลใหญ่ลงสู่ลำน้ำท้ายเขื่อน", "6.40 m", "80%", "5.40 m", "8.20 m", 58, 85);
-        break;
-      case 4:
-        waterLevelHeight = 0.60;
-        gateOpenPercent = 0.6;
-        isRaining = false;
-        updateText("ฟื้นฟูรอบ C2: ลดระดับน้ำต่อเนื่อง ปรับสมดุลการไหลเพื่อไม่ให้พื้นที่ท้ายเขื่อนท่วม", "5.10 m", "60%", "4.30 m", "7.95 m", 45, 82);
-        break;
-      case 5:
-        waterLevelHeight = 0.48;
-        gateOpenPercent = 0.7;
-        isRaining = false;
-        updateText("รอบที่ 3 (สปิลเวย์เปิด 70%): ระดับน้ำลดลงจาก 8.50m → 3.75m (ระบบเดิมเหลือ 7.80m)", "3.75 m", "70%", "3.75 m", "7.80 m", 40, 80);
-        break;
-      case 6:
-        waterLevelHeight = 0.35;
-        gateOpenPercent = 0.2;
-        isRaining = false;
-        updateText("ระดับน้ำกลับเข้าสู่ภาวะสมดุลปลอดภัย (Normal Level 3.20m) ประตูสปิลเวย์ปิดพักการทำงาน", "3.20 m", "20%", "3.20 m", "7.50 m", 30, 75);
-        break;
-    }
-  }
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
 
-  function updateText(status, level, gate, aiVal, normVal, aiBarW, normBarW) {
-    document.getElementById('statusText').innerText = status;
-    document.getElementById('lcdLine1').innerText = "Dam Level: " + level;
-    document.getElementById('lcdLine2').innerText = "Gate Open: " + gate;
-    document.getElementById('sensorVal').innerText = level;
-    document.getElementById('aiVal').innerText = aiVal;
-    document.getElementById('normalVal').innerText = normVal;
-    document.getElementById('aiBar').style.width = aiBarW + "%";
-    document.getElementById('normalBar').style.width = normBarW + "%";
-  }
+            // A. Animate Water Surface (Vertical wave oscillation)
+            if (reservoirWaterMesh) {
+                const pos = reservoirWaterMesh.geometry.attributes.position;
+                for (let i = 0; i < pos.count; i++) {
+                    const u = pos.getX(i);
+                    const v = pos.getZ(i);
+                    const z = Math.sin(u * 0.2 + time * 2) * 0.25 + Math.cos(v * 0.2 + time * 1.5) * 0.25;
+                    pos.setY(i, z);
+                }
+                reservoirWaterMesh.geometry.attributes.position.needsUpdate = true;
 
-  function updateUI() {
-    const gateTxt = Math.round(gateOpenPercent * 100) + "%";
-    document.getElementById('lcdLine2').innerText = "Gate Open: " + gateTxt;
-  }
+                // Adjust Reservoir Y height based on water level state (0% = Y: 4, 100% = Y: 21)
+                const targetY = 4 + (systemState.waterLevel / 100) * 17;
+                reservoirWaterMesh.position.y += (targetY - reservoirWaterMesh.position.y) * 0.05;
+            }
 
-  // Start Animation
-  animate();
-</script>
+            // B. Animate Spillway Water Flow & Gate Height
+            if (damGateMesh) {
+                const targetGateY = 14 + (systemState.gateOpenPct / 100) * 8;
+                damGateMesh.position.y += (targetGateY - damGateMesh.position.y) * 0.05;
+            }
+
+            if (spillwayWaterFlow) {
+                // Opacity increases as gate opens
+                const targetOpacity = (systemState.gateOpenPct / 100) * 0.85;
+                spillwayWaterFlow.material.opacity += (targetOpacity - spillwayWaterFlow.material.opacity) * 0.05;
+            }
+
+            // C. Rotate Hydro Turbines
+            turbineMeshes.forEach(turbine => {
+                turbine.rotation.y += (systemState.turbineRpm / 60) * delta * 2;
+            });
+
+            // D. Animate Rain Particles
+            if (rainParticles && systemState.isRaining) {
+                const pos = rainParticles.geometry.attributes.position;
+                for (let i = 1; i < pos.count * 3; i += 3) {
+                    pos.array[i] -= 2.5;
+                    if (pos.array[i] < 0) pos.array[i] = 80;
+                }
+                pos.needsUpdate = true;
+            }
+
+            // Update Controls
+            controls.update();
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        // Handle Window Resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Camera Preset Controller
+        function setCameraView(preset) {
+            switch(preset) {
+                case 'overview':
+                    animateCamera({ x: 60, y: 45, z: 75 }, { x: 0, y: 5, z: 0 });
+                    break;
+                case 'spillway':
+                    animateCamera({ x: 10, y: 22, z: 30 }, { x: 0, y: 10, z: 0 });
+                    break;
+                case 'turbines':
+                    animateCamera({ x: 45, y: 15, z: 35 }, { x: 20, y: 5, z: 18 });
+                    break;
+                case 'sensor':
+                    animateCamera({ x: -45, y: 28, z: 10 }, { x: -28, y: 18, z: -6 });
+                    break;
+            }
+        }
+
+        function animateCamera(targetPos, targetLookAt) {
+            let progress = 0;
+            const startPos = { ...camera.position };
+            const startTarget = { ...controls.target };
+
+            function step() {
+                progress += 0.04;
+                if (progress <= 1) {
+                    camera.position.x = startPos.x + (targetPos.x - startPos.x) * progress;
+                    camera.position.y = startPos.y + (targetPos.y - startPos.y) * progress;
+                    camera.position.z = startPos.z + (targetPos.z - startPos.z) * progress;
+
+                    controls.target.x = startTarget.x + (targetLookAt.x - startTarget.x) * progress;
+                    controls.target.y = startTarget.y + (targetLookAt.y - startTarget.y) * progress;
+                    controls.target.z = startTarget.z + (targetLookAt.z - startTarget.z) * progress;
+
+                    requestAnimationFrame(step);
+                }
+            }
+            step();
+        }
+
+        // --- 5. Real-Time Logic & Dashboard Updates ---
+        let telemetryChart;
+
+        function initChart() {
+            const ctx = document.getElementById('telemetryChart').getContext('2d');
+            telemetryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['10:00', '10:01', '10:02', '10:03', '10:04', '10:05'],
+                    datasets: [{
+                        label: 'Water Level %',
+                        data: [45, 48, 50, 52, 51, 50],
+                        borderColor: '#00f0ff',
+                        backgroundColor: 'rgba(0, 240, 255, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 9 } } },
+                        y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 9 } } }
+                    }
+                }
+            });
+        }
+
+        function updateUI() {
+            // Water Level & Distance
+            document.getElementById('val-water-pct').innerText = `${systemState.waterLevel.toFixed(1)}%`;
+            const dist = 50 - (systemState.waterLevel / 100) * 45;
+            document.getElementById('val-water-dist').innerText = `Sensor Dist: ${dist.toFixed(1)} cm`;
+            document.getElementById('water-gauge-circle').style.strokeDasharray = `${systemState.waterLevel}, 100`;
+
+            // Alarm Banner Check
+            const alarmBanner = document.getElementById('alarm-banner');
+            if (systemState.waterLevel >= 80) {
+                alarmBanner.classList.remove('hidden');
+                document.getElementById('val-water-pct').className = "font-orbitron text-2xl font-bold text-red-400 glow-text-red";
+            } else {
+                alarmBanner.classList.add('hidden');
+                document.getElementById('val-water-pct').className = "font-orbitron text-2xl font-bold text-cyber-accent glow-text-cyan";
+            }
+
+            // Inflow / Outflow / Power / Relay
+            document.getElementById('val-inflow').innerText = `${systemState.inflowRate} m³/s`;
+            document.getElementById('val-outflow').innerText = `${systemState.outflowRate} m³/s`;
+            document.getElementById('val-power').innerText = `${systemState.powerOutput.toFixed(1)} MW`;
+            document.getElementById('val-rpm').innerText = `${systemState.turbineRpm} RPM`;
+
+            const relayElem = document.getElementById('val-relay');
+            if (systemState.waterLevel >= 80 || systemState.gateOpenPct > 0) {
+                relayElem.innerText = "ON (Active)";
+                relayElem.className = "font-mono text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700";
+            } else {
+                relayElem.innerText = "OFF (Closed)";
+                relayElem.className = "font-mono text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+            }
+        }
+
+        // Control Panel Interactive Functions
+        function setMode(mode) {
+            systemState.mode = mode;
+            ['auto', 'manual', 'emergency'].forEach(m => {
+                const btn = document.getElementById(`btn-mode-${m}`);
+                if (m === mode) {
+                    btn.className = "px-3 py-1 rounded-md font-semibold transition bg-cyber-accent text-black";
+                } else {
+                    btn.className = "px-3 py-1 rounded-md font-semibold transition text-slate-400 hover:text-white";
+                }
+            });
+
+            if (mode === 'emergency') {
+                updateGateSlider(100);
+                addLog("EMERGENCY OVERRIDE: Spillway Gates Opened 100%", "red");
+            } else if (mode === 'auto') {
+                addLog("System switched to Autonomous AI Control mode", "cyan");
+            }
+        }
+
+        function updateGateSlider(val) {
+            systemState.gateOpenPct = parseFloat(val);
+            document.getElementById('gate-angle-val').innerText = `${val}%`;
+            document.getElementById('gate-slider').value = val;
+            
+            // Outflow calculation based on gate %
+            systemState.outflowRate = 180 + Math.round((val / 100) * 850);
+            updateUI();
+        }
+
+        function toggleRain() {
+            systemState.isRaining = !systemState.isRaining;
+            const btnText = document.getElementById('rain-status-text');
+            if (systemState.isRaining) {
+                btnText.innerText = "HEAVY RAIN";
+                btnText.className = "text-blue-400 font-bold";
+                rainParticles.material.opacity = 0.6;
+                addLog("Weather event simulated: Heavy Torrential Rain", "cyan");
+            } else {
+                btnText.innerText = "OFF";
+                btnText.className = "text-slate-500";
+                rainParticles.material.opacity = 0.0;
+                addLog("Weather event cleared: Normal Conditions", "emerald");
+            }
+        }
+
+        function addLog(msg, color = 'cyan') {
+            const container = document.getElementById('log-container');
+            const now = new Date().toTimeString().split(' ')[0];
+            const borderColors = {
+                cyan: 'border-cyan-400',
+                emerald: 'border-emerald-400',
+                red: 'border-red-500 animate-pulse'
+            };
+
+            const logItem = document.createElement('div');
+            logItem.className = `p-1.5 rounded bg-slate-950/80 border-l-2 ${borderColors[color] || 'border-cyan-400'} text-slate-300`;
+            logItem.innerHTML = `<span class="text-slate-500">[${now}]</span> ${msg}`;
+            container.prepend(logItem);
+        }
+
+        function clearLogs() {
+            document.getElementById('log-container').innerHTML = '';
+        }
+
+        // Live Clock
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toTimeString().split(' ')[0] + " UTC";
+            document.getElementById('live-date').innerText = now.toISOString().split('T')[0];
+
+            // Simulation step: Rain increases level, Gate decreases level
+            if (systemState.isRaining) {
+                systemState.waterLevel = Math.min(100, systemState.waterLevel + 0.3);
+            }
+            if (systemState.gateOpenPct > 0) {
+                systemState.waterLevel = Math.max(10, systemState.waterLevel - (systemState.gateOpenPct / 100) * 0.4);
+            }
+
+            // Autonomous Mode Hysteresis logic
+            if (systemState.mode === 'auto') {
+                if (systemState.waterLevel >= 80 && systemState.gateOpenPct === 0) {
+                    updateGateSlider(80);
+                    addLog("AUTONOMOUS ACTION: Water >= 80%. Spillway opened automatically!", "red");
+                } else if (systemState.waterLevel <= 40 && systemState.gateOpenPct > 0) {
+                    updateGateSlider(0);
+                    addLog("AUTONOMOUS ACTION: Water <= 40%. Spillway closed.", "emerald");
+                }
+            }
+
+            // Update Chart Data Stream
+            if (telemetryChart) {
+                const labels = telemetryChart.data.labels;
+                labels.shift();
+                labels.push(now.toTimeString().split(' ')[0].substring(0, 5));
+                telemetryChart.data.datasets[0].data.shift();
+                telemetryChart.data.datasets[0].data.push(systemState.waterLevel);
+                telemetryChart.update();
+            }
+
+            updateUI();
+        }, 1500);
+
+        // --- 6. MQTT Integration ---
+        function initMQTT() {
+            const clientID = "WebTwinClient_" + Math.random().toString(16).substr(2, 8);
+            const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, clientID);
+
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            client.connect({
+                onSuccess: () => {
+                    document.getElementById('mqtt-status-dot').className = "h-2.5 w-2.5 rounded-full bg-emerald-400";
+                    document.getElementById('mqtt-status-text').innerText = "MQTT ONLINE";
+                    document.getElementById('mqtt-status-text').className = "text-emerald-400 font-semibold";
+                    client.subscribe("dam/water_level");
+                    addLog("MQTT Connected to HiveMQ Broker (dam/water_level)", "emerald");
+                },
+                onFailure: () => {
+                    document.getElementById('mqtt-status-dot').className = "h-2.5 w-2.5 rounded-full bg-red-400";
+                    document.getElementById('mqtt-status-text').innerText = "DISCONNECTED";
+                    document.getElementById('mqtt-status-text').className = "text-red-400 font-semibold";
+                }
+            });
+
+            function onConnectionLost(responseObject) {
+                if (responseObject.errorCode !== 0) {
+                    addLog("MQTT Connection Lost. Retrying...", "red");
+                }
+            }
+
+            function onMessageArrived(message) {
+                try {
+                    const payload = JSON.parse(message.payloadString);
+                    if (payload.water_level !== undefined) {
+                        systemState.waterLevel = parseFloat(payload.water_level);
+                        updateUI();
+                        addLog(`MQTT Payload Received: Level ${systemState.waterLevel}%`, "cyan");
+                    }
+                } catch (e) {
+                    // Raw number fallback
+                    if (!isNaN(message.payloadString)) {
+                        systemState.waterLevel = parseFloat(message.payloadString);
+                        updateUI();
+                    }
+                }
+            }
+        }
+
+        // Window Load Initialization
+        window.onload = function () {
+            init3D();
+            animate();
+            initChart();
+            updateUI();
+            initMQTT();
+        };
+    </script>
 </body>
 </html>
-"""
-
-# Render Component
-components.html(digital_twin_html, height=560)
-
-st.markdown("---")
-
-# Analytical Charts Section
-col_chart1, col_chart2 = st.columns(2)
-
-with col_chart1:
-    st.subheader("📈 การสลายตัวของระดับน้ำหลาก (Queue Dissipation Curve)")
-    chart_data = pd.DataFrame({
-        "ไฟปกติ (ไม่มี AI)": [14.0, 13.2, 12.8, 12.0],
-        "แผน AI (75%, 50%, 25%)": [14.0, 9.1, 5.7, 3.75]
-    }, index=["หลังฝนหยุด", "จบรอบ 1 (C1)", "จบรอบ 2 (C2)", "จบรอบ 3 (C3)"])
-    st.line_chart(chart_data)
-
-with col_chart2:
-    st.subheader("📊 ความล่าช้าสะสม & ประสิทธิภาพการลดน้ำท่วม")
-    eff_col1, eff_col2 = st.columns([2, 1])
-    with eff_col1:
-        delay_df = pd.DataFrame({
-            "ระยะเวลาวิกฤต (นาที)": [74.39, 53.76]
-        }, index=["ระบบเดิม", "ระบบ AI"])
-        st.bar_chart(delay_df)
